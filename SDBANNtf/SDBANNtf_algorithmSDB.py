@@ -23,8 +23,12 @@ from ANNtf2_operations import *	#generateParameterNameSeq, generateParameterName
 import ANNtf2_operations
 import ANNtf2_globalDefs
 
-numberOfIndependentDendriticBranches = 10	#CHECKTHIS
-
+numberOfIndependentDendriticBranches = 10
+normaliseActivationSparsity = True
+if(normaliseActivationSparsity):
+	weightStddev = 0.05	#from https://www.tensorflow.org/api_docs/python/tf/keras/initializers/RandomNormal
+	normaliseActivationSparsityDebug = False
+	
 debugOnlyTrainFinalLayer = False
 debugSingleLayerNetwork = False
 debugFastTrain = False
@@ -34,7 +38,7 @@ supportMultipleNetworks = True
 
 supportSkipLayers = False
 
-normaliseFirstLayer = False
+normaliseFirstLayer = False	#consider for normaliseActivationSparsity
 equaliseNumberExamplesPerClass = False
 
 
@@ -58,7 +62,10 @@ def defineTrainingParameters(dataset):
 	global batchSize
 	
 	learningRate = 0.001
-	batchSize = 100
+	if(normaliseActivationSparsityDebug):
+		batchSize = 10
+	else:
+		batchSize = 100
 	numEpochs = 10	#100 #10
 	if(debugFastTrain):
 		trainingSteps = batchSize
@@ -167,6 +174,9 @@ def applyDBweights(AprevLayer, Wlayer):
 	Z = tf.math.reduce_max(Z, axis=1)
 	#Zarg = tf.math.argmax(Z, axis=1)
 	
+	if(normaliseActivationSparsity):
+		Z = Z-weightStddev #reduce activation (since taking max value across independent segments will tend to be negative)
+			
 	return Z
 					
 def neuralNetworkPropagationANN(x, networkIndex=1, l=None):
@@ -196,6 +206,10 @@ def neuralNetworkPropagationANN(x, networkIndex=1, l=None):
 			Z = tf.add(Z, B[generateParameterNameNetwork(networkIndex, l1, "B")])
 		A = activationFunction(Z)
 		
+		if(normaliseActivationSparsityDebug):
+			#verify renormalised activation sparsity ~50%
+			print("A = ", A) 
+
 		#print("l1 = " + str(l1))		
 		#print("W = ", W[generateParameterNameNetwork(networkIndex, l1, "W")] )
 		
