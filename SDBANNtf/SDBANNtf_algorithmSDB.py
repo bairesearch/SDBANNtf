@@ -140,12 +140,14 @@ def defineNeuralNetworkParameters():
 					if(l2 < l1):
 						if(useDependentSubbranches):
 							Wlayer = randomNormal([numberOfDependentSubbranches, numberOfIndependentDendriticBranches, n_h[l2], n_h[l1]])
+							Wlayer = tf.Variable(initialiseWlayerSubbranchValues(Wlayer))
 						else:
 							Wlayer = randomNormal([numberOfIndependentDendriticBranches, n_h[l2], n_h[l1]]) 
 						W[generateParameterNameNetworkSkipLayers(networkIndex, l2, l1, "W")] = tf.Variable(Wlayer)
 			else:	
 				if(useDependentSubbranches):
 					Wlayer = tf.Variable(randomNormal([numberOfDependentSubbranches, numberOfIndependentDendriticBranches, n_h[l1-1], n_h[l1]]))
+					Wlayer = tf.Variable(initialiseWlayerSubbranchValues(Wlayer))
 				else:
 					Wlayer = tf.Variable(randomNormal([numberOfIndependentDendriticBranches, n_h[l1-1], n_h[l1]]))
 				W[generateParameterNameNetwork(networkIndex, l1, "W")] = Wlayer
@@ -179,18 +181,33 @@ def neuralNetworkPropagationAllNetworksFinalLayer(AprevLayer):
 	pred = tf.nn.softmax(Z)	
 	return pred
 
+def initialiseWlayerSubbranchValues(Wlayer):
+	WlayerSubbranchAveragedList = []
+	for subbranchIndex in range(numberOfDependentSubbranches):	
+		WlayerSubbranchAveraged = equaliseWlayerSubbranchValues(subbranchIndex, Wlayer, False)
+		WlayerSubbranchAveragedList.append(WlayerSubbranchAveraged)
+	WlayerSubbranchAveragedStacked = tf.stack(WlayerSubbranchAveragedList, axis=0)
+	return WlayerSubbranchAveragedStacked
+
+def equaliseWlayerSubbranchValues(subbranchIndex, Wlayer, takeAverageOrFirst):
+	#equalise WlayerSubbranch values (take average of values after last backprop update)
+	WlayerSubbranch = Wlayer[subbranchIndex, :, :, :]
+	WlayerSubbranchList = tf.split(WlayerSubbranch, num_or_size_splits=numberOfIndependentDendriticSubbranchesSplit[subbranchIndex], axis=0)
+	if(takeAverageOrFirst):
+		WlayerSubbranchAveraged = tf.stack(WlayerSubbranchList, axis=0)
+		WlayerSubbranchAveraged = tf.reduce_mean(WlayerSubbranchAveraged, axis=0)
+	else:
+		WlayerSubbranchAveraged = WlayerSubbranchList[0]
+	tile = [numberOfIndependentDendriticSubbranchesSplit[subbranchIndex], 1, 1]
+	WlayerSubbranchAveraged = tf.tile(WlayerSubbranchAveraged, tile)
+	return WlayerSubbranchAveraged
+			
 def applyDBweights(AprevLayer, Wlayer):	
 	if(useDependentSubbranches):
 		ZsubbranchList = []
-		for subbranchIndex in range(numberOfDependentSubbranches):			
-			#equalise WlayerSubbranch values (take average of values after last backprop update);
-			WlayerSubbranch = Wlayer[subbranchIndex, :, :, :]
-			WlayerSubbranchList = tf.split(WlayerSubbranch, num_or_size_splits=numberOfIndependentDendriticSubbranchesSplit[subbranchIndex], axis=0)
-			WlayerSubbranchAveraged = tf.stack(WlayerSubbranchList, axis=0)
-			WlayerSubbranchAveraged = tf.reduce_mean(WlayerSubbranchAveraged, axis=0)
-			tile = [numberOfIndependentDendriticSubbranchesSplit[subbranchIndex], 1, 1]
-			WlayerSubbranchAveraged = tf.tile(WlayerSubbranchAveraged, tile)
-
+		for subbranchIndex in range(numberOfDependentSubbranches):	
+			WlayerSubbranchAveraged = equaliseWlayerSubbranchValues(subbranchIndex, Wlayer, True)
+		
 			WlayerSubbranchAveraged = tf.reshape(WlayerSubbranchAveraged, [WlayerSubbranchAveraged.shape[1], WlayerSubbranchAveraged.shape[2]*WlayerSubbranchAveraged.shape[0]])
 			Zsubbranch = tf.matmul(AprevLayer, WlayerSubbranchAveraged)
 			Zsubbranch = tf.reshape(Zsubbranch, [Zsubbranch.shape[0], numberOfIndependentDendriticBranches, Zsubbranch.shape[1]//numberOfIndependentDendriticBranches])
@@ -213,7 +230,6 @@ def applyDBweights(AprevLayer, Wlayer):
 	return Z
 					
 def neuralNetworkPropagationANN(x, networkIndex=1, l=None):
-			
 	#print("numberOfLayers", numberOfLayers)
 
 	if(l == None):
