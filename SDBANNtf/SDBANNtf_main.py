@@ -1,4 +1,4 @@
-"""SDBANNtf.py
+"""SDBANNtf_main.py
 
 # Author:
 Richard Bruce Baxter - Copyright (c) 2023 Baxter AI (baxterai.com)
@@ -15,10 +15,10 @@ conda install -c tensorflow tensorflow=2.3
 	
 # Usage:
 source activate anntf2
-python3 SDBANNtf.py
+python3 SDBANNtf_main.py
 
 # Description:
-SDBANNtf - train an simulated dendritic branch artificial neural network (SDBANN)
+SDBANNtf main - train an simulated dendritic branch artificial neural network (SDBANN)
 
 """
 

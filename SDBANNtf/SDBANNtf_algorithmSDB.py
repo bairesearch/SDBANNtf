@@ -7,10 +7,10 @@ Richard Bruce Baxter - Copyright (c) 2023 Baxter AI (baxterai.com)
 MIT License
 
 # Installation:
-see SDBANNtf.py
+see SDBANNtf_main.py
 
 # Usage:
-see SDBANNtf.py
+see SDBANNtf_main.py
 
 # Description:
 SDBANNtf algorithm SDB - define simulated dendritic branch artificial neural network
@@ -23,12 +23,20 @@ from ANNtf2_operations import *	#generateParameterNameSeq, generateParameterName
 import ANNtf2_operations
 import ANNtf2_globalDefs
 
-numberOfIndependentDendriticBranches = 10
-normaliseActivationSparsity = True
+useDependentSubbranches = False
+if(useDependentSubbranches):
+	numberOfDependentSubbranches = 3
+	numberOfIndependentDendriticBranches = 10
+	numberOfIndependentDendriticSubbranchesSplit = [numberOfIndependentDendriticBranches, 2, 1]
+	numberOfIndependentDendriticSubbranches = [numberOfIndependentDendriticBranches//numberOfIndependentDendriticSubbranchesSplit[0], numberOfIndependentDendriticBranches//numberOfIndependentDendriticSubbranchesSplit[1], numberOfIndependentDendriticBranches//numberOfIndependentDendriticSubbranchesSplit[2]]	#all values must be factors of numberOfIndependentDendriticBranches, eg 1, 5, 10
+else:
+	numberOfIndependentDendriticBranches = 10
+
+normaliseActivationSparsity = False
 if(normaliseActivationSparsity):
 	weightStddev = 0.05	#from https://www.tensorflow.org/api_docs/python/tf/keras/initializers/RandomNormal
-	normaliseActivationSparsityDebug = False
-	
+
+debugNormaliseActivationSparsity = False
 debugOnlyTrainFinalLayer = False
 debugSingleLayerNetwork = False
 debugFastTrain = False
@@ -62,7 +70,7 @@ def defineTrainingParameters(dataset):
 	global batchSize
 	
 	learningRate = 0.001
-	if(normaliseActivationSparsityDebug):
+	if(debugNormaliseActivationSparsity):
 		batchSize = 10
 	else:
 		batchSize = 100
@@ -130,10 +138,16 @@ def defineNeuralNetworkParameters():
 			if(supportSkipLayers):
 				for l2 in range(0, l1):
 					if(l2 < l1):
-						Wlayer = randomNormal([numberOfIndependentDendriticBranches, n_h[l2], n_h[l1]]) 
+						if(useDependentSubbranches):
+							Wlayer = randomNormal([numberOfDependentSubbranches, numberOfIndependentDendriticBranches, n_h[l2], n_h[l1]])
+						else:
+							Wlayer = randomNormal([numberOfIndependentDendriticBranches, n_h[l2], n_h[l1]]) 
 						W[generateParameterNameNetworkSkipLayers(networkIndex, l2, l1, "W")] = tf.Variable(Wlayer)
 			else:	
-				Wlayer = tf.Variable(randomNormal([numberOfIndependentDendriticBranches, n_h[l1-1], n_h[l1]]))
+				if(useDependentSubbranches):
+					Wlayer = tf.Variable(randomNormal([numberOfDependentSubbranches, numberOfIndependentDendriticBranches, n_h[l1-1], n_h[l1]]))
+				else:
+					Wlayer = tf.Variable(randomNormal([numberOfIndependentDendriticBranches, n_h[l1-1], n_h[l1]]))
 				W[generateParameterNameNetwork(networkIndex, l1, "W")] = Wlayer
 			B[generateParameterNameNetwork(networkIndex, l1, "B")] = tf.Variable(tf.zeros(n_h[l1]))
 
@@ -166,13 +180,32 @@ def neuralNetworkPropagationAllNetworksFinalLayer(AprevLayer):
 	return pred
 
 def applyDBweights(AprevLayer, Wlayer):	
-	Wlayer = tf.reshape(Wlayer, [Wlayer.shape[1], Wlayer.shape[2]*Wlayer.shape[0]])
-	Z = tf.matmul(AprevLayer, Wlayer)
-	Z = tf.reshape(Z, [Z.shape[0], numberOfIndependentDendriticBranches, Z.shape[1]//numberOfIndependentDendriticBranches])
-	
+	if(useDependentSubbranches):
+		ZsubbranchList = []
+		for subbranchIndex in range(numberOfDependentSubbranches):			
+			#equalise WlayerSubbranch values (take average of values after last backprop update);
+			WlayerSubbranch = Wlayer[subbranchIndex, :, :, :]
+			WlayerSubbranchList = tf.split(WlayerSubbranch, num_or_size_splits=numberOfIndependentDendriticSubbranchesSplit[subbranchIndex], axis=0)
+			WlayerSubbranchAveraged = tf.stack(WlayerSubbranchList, axis=0)
+			WlayerSubbranchAveraged = tf.reduce_mean(WlayerSubbranchAveraged, axis=0)
+			tile = [numberOfIndependentDendriticSubbranchesSplit[subbranchIndex], 1, 1]
+			WlayerSubbranchAveraged = tf.tile(WlayerSubbranchAveraged, tile)
+
+			WlayerSubbranchAveraged = tf.reshape(WlayerSubbranchAveraged, [WlayerSubbranchAveraged.shape[1], WlayerSubbranchAveraged.shape[2]*WlayerSubbranchAveraged.shape[0]])
+			Zsubbranch = tf.matmul(AprevLayer, WlayerSubbranchAveraged)
+			Zsubbranch = tf.reshape(Zsubbranch, [Zsubbranch.shape[0], numberOfIndependentDendriticBranches, Zsubbranch.shape[1]//numberOfIndependentDendriticBranches])
+			
+			ZsubbranchList.append(Zsubbranch)
+			
+		Z = tf.stack(ZsubbranchList, axis=0)
+		Z = tf.reduce_mean(Z, axis=0)
+	else:
+		Wlayer = tf.reshape(Wlayer, [Wlayer.shape[1], Wlayer.shape[2]*Wlayer.shape[0]])
+		Z = tf.matmul(AprevLayer, Wlayer)
+		Z = tf.reshape(Z, [Z.shape[0], numberOfIndependentDendriticBranches, Z.shape[1]//numberOfIndependentDendriticBranches])
+
 	#take the highest output dendritic branch for each output neuron - WTA winner takes all
 	Z = tf.math.reduce_max(Z, axis=1)
-	#Zarg = tf.math.argmax(Z, axis=1)
 	
 	if(normaliseActivationSparsity):
 		Z = Z-weightStddev #reduce activation (since taking max value across independent segments will tend to be negative)
@@ -206,7 +239,7 @@ def neuralNetworkPropagationANN(x, networkIndex=1, l=None):
 			Z = tf.add(Z, B[generateParameterNameNetwork(networkIndex, l1, "B")])
 		A = activationFunction(Z)
 		
-		if(normaliseActivationSparsityDebug):
+		if(debugNormaliseActivationSparsity):
 			#verify renormalised activation sparsity ~50%
 			print("A = ", A) 
 
