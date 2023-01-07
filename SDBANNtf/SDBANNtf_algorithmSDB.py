@@ -25,6 +25,7 @@ import ANNtf2_globalDefs
 
 useDependentSubbranches = False
 if(useDependentSubbranches):
+	useDependentSubbranchesSparsity = True	#apply connectivity sparsity to subbranches - current implementation applies uniform sparsity across subbrances
 	numberOfDependentSubbranches = 3
 	numberOfIndependentDendriticBranches = 10
 	numberOfIndependentDendriticSubbranchesSplit = [numberOfIndependentDendriticBranches, 2, 1]
@@ -49,6 +50,9 @@ supportSkipLayers = False
 normaliseFirstLayer = False	#consider for normaliseActivationSparsity
 equaliseNumberExamplesPerClass = False
 
+randomUniformMin = 0.0
+randomUniformMax = 1.0
+randomUniform = tf.initializers.RandomUniform(minval=randomUniformMin, maxval=randomUniformMax)
 
 W = {}
 B = {}
@@ -200,6 +204,12 @@ def equaliseWlayerSubbranchValues(subbranchIndex, Wlayer, takeAverageOrFirst):
 		WlayerSubbranchAveraged = WlayerSubbranchList[0]
 	tile = [numberOfIndependentDendriticSubbranchesSplit[subbranchIndex], 1, 1]
 	WlayerSubbranchAveraged = tf.tile(WlayerSubbranchAveraged, tile)
+	if(useDependentSubbranchesSparsity):
+		#if(not takeAverageOrFirst):
+		WlayerSubbranchSparsity = randomUniform(WlayerSubbranchAveraged.shape)
+		WlayerSubbranchSparsity = tf.less_equal(WlayerSubbranchSparsity, (subbranchIndex+1)/numberOfDependentSubbranches)	#current implementation applies uniform sparsity across subbrances
+		WlayerSubbranchSparsity = tf.cast(WlayerSubbranchSparsity, dtype=tf.dtypes.float32)
+		WlayerSubbranchAveraged = tf.multiply(WlayerSubbranchAveraged, WlayerSubbranchSparsity)
 	return WlayerSubbranchAveraged
 			
 def applyDBweights(AprevLayer, Wlayer):	

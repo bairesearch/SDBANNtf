@@ -30,7 +30,7 @@ import tensorflow as tf
 import numpy as np
 
 import sys
-np.set_printoptions(threshold=sys.maxsize)
+#np.set_printoptions(threshold=sys.maxsize)
 
 from ANNtf2_operations import *
 import ANNtf2_globalDefs
