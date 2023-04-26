@@ -19,9 +19,9 @@ SDBANNtf algorithm SDB - define simulated dendritic branch artificial neural net
 
 import tensorflow as tf
 import numpy as np
-from ANNtf2_operations import *	#generateParameterNameSeq, generateParameterName, defineNetworkParameters
-import ANNtf2_operations
-import ANNtf2_globalDefs
+from ANNtf_operations import *	#generateParameterNameSeq, generateParameterName, defineNetworkParameters
+import ANNtf_operations
+import ANNtf_globalDefs
 
 useDependentSubbranches = False
 if(useDependentSubbranches):
@@ -33,9 +33,9 @@ if(useDependentSubbranches):
 else:
 	numberOfIndependentDendriticBranches = 10
 
-normaliseActivationSparsity = False
-if(normaliseActivationSparsity):
-	weightStddev = 0.05	#from https://www.tensorflow.org/api_docs/python/tf/keras/initializers/RandomNormal
+normaliseActivationSparsity = True
+#if(normaliseActivationSparsity):
+#	weightStddev = 0.05	#from https://www.tensorflow.org/api_docs/python/tf/keras/initializers/RandomNormal
 
 debugNormaliseActivationSparsity = False
 debugOnlyTrainFinalLayer = False
@@ -97,9 +97,9 @@ def defineNetworkParameters(num_input_neurons, num_output_neurons, datasetNumFea
 	global numberOfNetworks
 	
 	if(debugSingleLayerNetwork):
-		n_h, numberOfLayers, numberOfNetworks, datasetNumClasses = ANNtf2_operations.defineNetworkParametersANNsingleLayer(num_input_neurons, num_output_neurons, datasetNumFeatures, dataset, numberOfNetworksSet)
+		n_h, numberOfLayers, numberOfNetworks, datasetNumClasses = ANNtf_operations.defineNetworkParametersANNsingleLayer(num_input_neurons, num_output_neurons, datasetNumFeatures, dataset, numberOfNetworksSet)
 	else:
-		n_h, numberOfLayers, numberOfNetworks, datasetNumClasses = ANNtf2_operations.defineNetworkParameters(num_input_neurons, num_output_neurons, datasetNumFeatures, dataset, numberOfNetworksSet, generateLargeNetwork=False)
+		n_h, numberOfLayers, numberOfNetworks, datasetNumClasses = ANNtf_operations.defineNetworkParameters(num_input_neurons, num_output_neurons, datasetNumFeatures, dataset, numberOfNetworksSet, generateLargeNetwork=False)
 	
 	return numberOfLayers
 	
@@ -235,9 +235,17 @@ def applyDBweights(AprevLayer, Wlayer):
 	Z = tf.math.reduce_max(Z, axis=1)
 	
 	if(normaliseActivationSparsity):
-		Z = Z-weightStddev #reduce activation (since taking max value across independent segments will tend to be negative)
-			
+		#Z = Z-weightStddev #orig implementation #reduce activation (since taking max value across independent segments will tend to be negative)
+		Z = layerNorm(Z) 
+		
 	return Z
+
+def layerNorm(input_tensor):
+	#mean, variance = tf.nn.moments(input_tensor, axes=[1], keepdims=True)
+	#output_tensor = tf.nn.batch_normalization(input_tensor, mean, variance, offset=None, scale=None, variance_epsilon=1e-6)
+	layer = tf.keras.layers.LayerNormalization(axis=1)
+	output_tensor = layer(input_tensor)
+	return output_tensor
 					
 def neuralNetworkPropagationANN(x, networkIndex=1, l=None):
 	#print("numberOfLayers", numberOfLayers)
